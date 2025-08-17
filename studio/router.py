@@ -3,14 +3,17 @@ from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import TypedDict
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from typing import List
 
-
 class OverallState(TypedDict):
-    messages: List
+    messages: List[BaseMessage]  # Fixed: proper type annotation
+    question: str  # Keep this for input handling
+    answer: str   # Keep this for output
+
 class InputState(TypedDict):
     question: str
+    
 class OutputState(TypedDict):
     answer: str
 
@@ -30,11 +33,11 @@ llm_with_tools = llm.bind_tools([multiply])
 
 # Node
 def tool_calling_llm(state):
-    # If messages don't exist, create them from the question
-    if "messages" not in state or not state["messages"]:
+    # Check if we need to initialize messages from the question
+    if "messages" not in state or len(state.get("messages", [])) == 0:
         messages = [
-            SystemMessage(content="You are a helpful assistant. Only use the multiply tool when the user specifically asks for multiplication. For greetings and general questions, respond normally without using any tools."),
-            HumanMessage(content=state.get("question", ""))
+            SystemMessage(content="You are a helpful assistant. When asked to multiply numbers, ALWAYS use the multiply tool. For greetings and general questions, respond normally without using any tools."),
+            HumanMessage(content=state["question"])  # Fixed: direct access to question
         ]
     else:
         messages = state["messages"]
@@ -59,7 +62,7 @@ builder.add_conditional_edges(
     tools_condition,
     {
         "tools": "tools",
-        "__end__": "generate_answer"  # Go to answer generation instead of END
+        "__end__": "generate_answer"
     }
 )
 builder.add_edge("tools", "tool_calling_llm")  # After tools, go back to LLM for final response
@@ -67,3 +70,4 @@ builder.add_edge("generate_answer", END)
 
 # Compile graph
 graph = builder.compile()
+
